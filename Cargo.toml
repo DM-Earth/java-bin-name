@@ -2,8 +2,14 @@
 name = "java-bin-name"
 version = "0.1.0"
 edition = "2024"
+description = "Java binary name parser and writer"
+repository = "https://codeberg.org/DM-Earth/java-bin-name"
+license = "LGPL-3.0-or-later"
+keywords = ["java", "binary", "jvm"]
+categories = ["parsing"]
 
-[dependencies]
+[badges]
+maintenance = { status = "passively-maintained" }
 
 [workspace.lints.rust]
 missing-docs = "warn"
