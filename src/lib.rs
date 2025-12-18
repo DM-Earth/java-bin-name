@@ -41,6 +41,28 @@ pub trait Parse<'s>: Sized {
     fn parse_from(cursor: &mut Cursor<'s>) -> Result<Self, Self::Error>;
 }
 
+/// Representation form of a component across different contexts.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ReprForm {
+    /// JLS-specified standard binary name format.
+    JLS,
+    /// Internal representation used by class files.
+    ///
+    /// See [JVMS 4.2.1](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-4.html#jvms-4.2.1)
+    /// for more information about internal form of a class, interface or package.
+    Internal,
+}
+
+impl ReprForm {
+    const fn package_separator(&self) -> char {
+        match self {
+            Self::JLS => '.',
+            Self::Internal => '/',
+        }
+    }
+}
+
 /// Cursor of a string slice.
 #[derive(Debug, Clone)]
 pub struct Cursor<'a>(&'a str);

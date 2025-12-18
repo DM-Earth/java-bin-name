@@ -132,8 +132,8 @@ impl Debug for MethodDescriptor<'_> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        CanonicalClassName, ClassName, FieldType, MethodDescriptor, MethodReturnDescriptor, parse,
-        validate_rw,
+        CanonicalClassName, ClassName, FieldType, MethodDescriptor, MethodReturnDescriptor,
+        ReprForm, parse, validate_rw,
     };
 
     #[test]
@@ -180,12 +180,12 @@ mod tests {
                     FieldType::Class(Box::new(ClassName::TopLevel(CanonicalClassName {
                         package: Some("java/lang"),
                         simple: "String",
-                        jls: false
+                        form: ReprForm::Internal
                     }))),
                     FieldType::Class(Box::new(ClassName::TopLevel(CanonicalClassName {
                         package: Some("java/lang"),
                         simple: "Object",
-                        jls: false
+                        form: ReprForm::Internal
                     }))),
                     FieldType::Boolean,
                 ]),
@@ -193,7 +193,7 @@ mod tests {
                     Box::new(ClassName::TopLevel(CanonicalClassName {
                         package: Some("java/lang"),
                         simple: "String",
-                        jls: false
+                        form: ReprForm::Internal
                     }))
                 ))))
             }

@@ -98,7 +98,7 @@ impl Debug for FieldType<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{CanonicalClassName, ClassName, FieldType, parse, validate_rw};
+    use crate::{CanonicalClassName, ClassName, FieldType, ReprForm, parse, validate_rw};
 
     #[test]
     fn primitives() {
@@ -130,7 +130,7 @@ mod tests {
             FieldType::Class(Box::new(ClassName::TopLevel(CanonicalClassName {
                 package: Some("java/lang"),
                 simple: "Object",
-                jls: false,
+                form: ReprForm::Internal,
             })))
         );
         validate_rw::<'_, FieldType<'_>>("Ljava/lang/Object;");
@@ -162,7 +162,7 @@ mod tests {
                 CanonicalClassName {
                     package: Some("java/lang"),
                     simple: "Object",
-                    jls: false,
+                    form: ReprForm::Internal,
                 }
             )))))
         );
@@ -177,7 +177,7 @@ mod tests {
                 Box::new(ClassName::TopLevel(CanonicalClassName {
                     package: Some("java/lang"),
                     simple: "Object",
-                    jls: false,
+                    form: ReprForm::Internal,
                 }))
             )))))
         );

@@ -1,6 +1,6 @@
 use std::{convert::Infallible, fmt::Display};
 
-use crate::{Cursor, Parse, method::MethodDescriptor, strip_digits_prefix};
+use crate::{Cursor, Parse, ReprForm, method::MethodDescriptor, strip_digits_prefix};
 
 /// Binary name of a class or interface.
 ///
@@ -112,22 +112,14 @@ pub struct CanonicalClassName<'a> {
     pub package: Option<&'a str>,
     /// The simple name of the class or interface.
     pub simple: &'a str,
-    /// Whether this binary name is following JLS.
-    ///
-    /// See [JVMS 4.2.1](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-4.html#jvms-4.2.1)
-    /// for more information about internal form of a class, interface or package.
-    pub jls: bool,
+    /// The representation form of this class name.
+    pub form: ReprForm,
 }
 
 impl Display for CanonicalClassName<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(pkg) = self.package {
-            write!(
-                f,
-                "{pkg}{}{}",
-                if self.jls { '.' } else { '/' },
-                self.simple
-            )
+            write!(f, "{pkg}{}{}", self.form.package_separator(), self.simple)
         } else {
             write!(f, "{}", self.simple)
         }
@@ -139,13 +131,17 @@ impl<'a> Parse<'a> for CanonicalClassName<'a> {
 
     fn parse_from(cursor: &mut Cursor<'a>) -> Result<Self, Self::Error> {
         Ok(cursor.advance(|s| {
-            let jls = !s.contains('/');
-            let (package, c) = s.rsplit_once(if jls { '.' } else { '/' }).unzip();
+            let form = if s.contains('/') {
+                ReprForm::Internal
+            } else {
+                ReprForm::JLS
+            };
+            let (package, c) = s.rsplit_once(form.package_separator()).unzip();
             (
                 Self {
                     package,
                     simple: c.unwrap_or(s),
-                    jls,
+                    form,
                 },
                 "",
             )
@@ -155,7 +151,7 @@ impl<'a> Parse<'a> for CanonicalClassName<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{CanonicalClassName, ClassName, parse, validate_rw};
+    use crate::{CanonicalClassName, ClassName, ReprForm, parse, validate_rw};
 
     #[test]
     fn top_level() {
@@ -164,7 +160,7 @@ mod tests {
             ClassName::TopLevel(CanonicalClassName {
                 package: Some("java.lang"),
                 simple: "String",
-                jls: true,
+                form: ReprForm::JLS,
             })
         );
 
@@ -173,7 +169,7 @@ mod tests {
             ClassName::TopLevel(CanonicalClassName {
                 package: None,
                 simple: "Foo",
-                jls: true,
+                form: ReprForm::JLS,
             })
         );
 
@@ -187,7 +183,7 @@ mod tests {
             ClassName::TopLevel(CanonicalClassName {
                 package: Some("java/lang"),
                 simple: "String",
-                jls: false
+                form: ReprForm::Internal
             })
         );
 
@@ -202,7 +198,7 @@ mod tests {
                 parent: Box::new(ClassName::TopLevel(CanonicalClassName {
                     package: Some("java.util"),
                     simple: "Map",
-                    jls: true
+                    form: ReprForm::JLS
                 })),
                 simple: "Entry"
             }
@@ -219,7 +215,7 @@ mod tests {
                 parent: Box::new(ClassName::TopLevel(CanonicalClassName {
                     package: Some("com.example"),
                     simple: "OuterClass",
-                    jls: true
+                    form: ReprForm::JLS
                 })),
                 index: 1,
                 simple: "LocalClass"
@@ -237,7 +233,7 @@ mod tests {
                 parent: Box::new(ClassName::TopLevel(CanonicalClassName {
                     package: Some("com.example"),
                     simple: "OuterClass",
-                    jls: true
+                    form: ReprForm::JLS
                 })),
                 index: 1,
             }
