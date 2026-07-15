@@ -141,6 +141,8 @@ pub struct ClassTypeSignature<'a> {
     /// Simple or full name of the class, depending on its location.
     pub name: &'a str,
     /// Generic arguments.
+    ///
+    /// `*` is denoted by `None`.
     pub args: SmallVec<[Option<Box<TypeArgument<'a>>>; 1]>,
 }
 

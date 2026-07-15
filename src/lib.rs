@@ -20,6 +20,7 @@
 //! - Classes or interfaces: [`ClassName`]
 //! - Methods: [`MethodDescriptor`]
 //! - Field types: [`FieldType`]
+//! - Type signatures: [`TypeSignature`]
 
 #![no_std]
 
