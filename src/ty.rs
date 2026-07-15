@@ -289,7 +289,7 @@ impl<'a> Parse<'a> for TypeSignature<'a> {
                 })
             }
             'T' => cursor
-                .try_advance(|s| std::dbg!(s).split_once(';').ok_or(UnknownTypeTag('T')))
+                .try_advance(|s| s.split_once(';').ok_or(UnknownTypeTag('T')))
                 .map(Self::Type),
             '[' => Self::parse_from(cursor).map(|t| Self::Array(Box::new(t))),
             _ => Err(UnknownTypeTag(leading)),
