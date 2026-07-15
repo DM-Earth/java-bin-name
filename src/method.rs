@@ -1,6 +1,6 @@
 use core::fmt::{Debug, Display};
 
-use alloc::{boxed::Box, vec};
+use smallvec::SmallVec;
 
 use crate::{Cursor, Parse, UnknownFieldType, ty::FieldType};
 
@@ -38,7 +38,7 @@ impl Display for InvalidMethodDescriptor {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct MethodDescriptor<'a> {
     /// Zero or more parameter descriptors, representing the types of parameters that the method takes.
-    pub params: Box<[FieldType<'a>]>,
+    pub params: SmallVec<[FieldType<'a>; 4]>,
     /// The return descriptor.
     pub ret: MethodReturnDescriptor<'a>,
 }
@@ -64,12 +64,12 @@ impl<'a> Parse<'a> for MethodDescriptor<'a> {
             s.split_once(')')
                 .ok_or(InvalidMethodDescriptor::BrokenBrackets)
         })?);
-        let mut params = vec![];
+        let mut params = SmallVec::new();
         while !params_raw.get().is_empty() {
             params.push(FieldType::parse_from(&mut params_raw)?);
         }
         Ok(Self {
-            params: params.into_boxed_slice(),
+            params,
             ret: MethodReturnDescriptor::parse_from(cursor)?,
         })
     }
@@ -134,6 +134,7 @@ impl Debug for MethodDescriptor<'_> {
 #[cfg(test)]
 mod tests {
     use alloc::boxed::Box;
+    use smallvec::SmallVec;
 
     use crate::{FieldType, MethodDescriptor, MethodReturnDescriptor, parse, validate_rw};
 
@@ -160,7 +161,7 @@ mod tests {
         assert_eq!(
             parse::<'_, MethodDescriptor<'_>>("()V").unwrap(),
             MethodDescriptor {
-                params: Box::new([]),
+                params: SmallVec::new(),
                 ret: MethodReturnDescriptor::Void
             }
         );
@@ -175,13 +176,13 @@ mod tests {
             )
             .unwrap(),
             MethodDescriptor {
-                params: Box::new([
+                params: smallvec::smallvec![
                     FieldType::Int,
                     FieldType::Array(Box::new(FieldType::Byte)),
                     FieldType::Class("java/lang/String"),
                     FieldType::Class("java/lang/Object"),
                     FieldType::Boolean,
-                ]),
+                ],
                 ret: MethodReturnDescriptor::Type(FieldType::Array(Box::new(FieldType::Class(
                     "java/lang/String"
                 ))))

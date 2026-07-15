@@ -1,15 +1,18 @@
 [package]
 name = "java-bin-name"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Java binary name parser and writer"
 repository = "https://codeberg.org/DM-Earth/java-bin-name"
 license = "LGPL-3.0-or-later"
-keywords = ["java", "binary", "jvm"]
+keywords = ["java", "binary", "jvm", "no_std"]
 categories = ["parsing"]
 
 [badges]
 maintenance = { status = "passively-maintained" }
+
+[dependencies]
+smallvec = { version = "1.15", features = ["union"] }
 
 [workspace.lints.rust]
 missing-docs = "warn"
