@@ -24,12 +24,13 @@
 #![no_std]
 
 extern crate alloc;
+extern crate std;
 
 mod class;
 mod method;
 mod ty;
 
-use core::convert::Infallible;
+use core::{convert::Infallible, fmt::Debug};
 
 pub use class::*;
 pub use method::*;
@@ -59,6 +60,7 @@ pub enum ReprForm {
 }
 
 impl ReprForm {
+    #[inline]
     const fn package_separator(&self) -> char {
         match self {
             Self::JLS => '.',
@@ -168,7 +170,7 @@ where
 fn validate_rw<'a, T>(value: &'a str)
 where
     T: Parse<'a> + core::fmt::Display,
-    T::Error: core::fmt::Debug,
+    T::Error: Debug,
 {
     use core::marker::PhantomData;
 

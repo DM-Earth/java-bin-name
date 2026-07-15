@@ -2,7 +2,7 @@ use core::fmt::{Debug, Display};
 
 use smallvec::SmallVec;
 
-use crate::{Cursor, Parse, UnknownFieldType, ty::FieldType};
+use crate::{Cursor, Parse, UnknownTypeTag, ty::FieldType};
 
 /// Error thrown when parsing a method descriptor.
 #[derive(Debug, Clone)]
@@ -10,13 +10,13 @@ pub enum InvalidMethodDescriptor {
     /// Brackets not exist or not enclosed.
     BrokenBrackets,
     /// Error when parsing field type.
-    UnknownFieldTy(UnknownFieldType),
+    UnknownFieldTy(UnknownTypeTag),
 }
 
 impl core::error::Error for InvalidMethodDescriptor {}
 
-impl From<UnknownFieldType> for InvalidMethodDescriptor {
-    fn from(value: UnknownFieldType) -> Self {
+impl From<UnknownTypeTag> for InvalidMethodDescriptor {
+    fn from(value: UnknownTypeTag) -> Self {
         Self::UnknownFieldTy(value)
     }
 }
@@ -94,7 +94,7 @@ impl Display for MethodReturnDescriptor<'_> {
 }
 
 impl<'a> Parse<'a> for MethodReturnDescriptor<'a> {
-    type Error = UnknownFieldType;
+    type Error = UnknownTypeTag;
 
     fn parse_from(cursor: &mut Cursor<'a>) -> Result<Self, Self::Error> {
         if cursor.get().chars().next().is_some_and(|c| c == 'V') {
@@ -136,7 +136,9 @@ mod tests {
     use alloc::boxed::Box;
     use smallvec::SmallVec;
 
-    use crate::{FieldType, MethodDescriptor, MethodReturnDescriptor, parse, validate_rw};
+    use crate::{
+        FieldType, MethodDescriptor, MethodReturnDescriptor, PrimitiveType, parse, validate_rw,
+    };
 
     #[test]
     fn return_desc_void() {
@@ -151,7 +153,7 @@ mod tests {
     fn return_desc_primitive() {
         assert_eq!(
             parse::<'_, MethodReturnDescriptor<'_>>("I").unwrap(),
-            MethodReturnDescriptor::Type(FieldType::Int)
+            MethodReturnDescriptor::Type(FieldType::Primitive(PrimitiveType::Int))
         );
         validate_rw::<'_, MethodReturnDescriptor<'_>>("I");
     }
@@ -177,11 +179,11 @@ mod tests {
             .unwrap(),
             MethodDescriptor {
                 params: smallvec::smallvec![
-                    FieldType::Int,
-                    FieldType::Array(Box::new(FieldType::Byte)),
+                    FieldType::Primitive(PrimitiveType::Int),
+                    FieldType::Array(Box::new(FieldType::Primitive(PrimitiveType::Byte))),
                     FieldType::Class("java/lang/String"),
                     FieldType::Class("java/lang/Object"),
-                    FieldType::Boolean,
+                    FieldType::Primitive(PrimitiveType::Boolean),
                 ],
                 ret: MethodReturnDescriptor::Type(FieldType::Array(Box::new(FieldType::Class(
                     "java/lang/String"
