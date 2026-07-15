@@ -1,6 +1,6 @@
 use std::fmt::{Debug, Display};
 
-use crate::{Cursor, Parse, class::ClassName};
+use crate::{Cursor, Parse};
 
 /// Error type marking the leading character of a field descriptor is invalid.
 #[derive(Debug, Clone)]
@@ -28,7 +28,7 @@ pub enum FieldType<'a> {
     Long,
     Short,
     Boolean,
-    Class(Box<ClassName<'a>>),
+    Class(&'a str),
     Array(Box<Self>),
 }
 
@@ -65,11 +65,7 @@ impl<'a> Parse<'a> for FieldType<'a> {
             'Z' => Ok(Self::Boolean),
             'L' => cursor
                 .try_advance(|s| s.split_once(';').ok_or(UnknownFieldType('L')))
-                .map(|s| {
-                    Self::Class(Box::new(
-                        ClassName::parse_from(&mut Cursor::new(s)).unwrap(),
-                    ))
-                }),
+                .map(Self::Class),
             '[' => Self::parse_from(cursor).map(|t| Self::Array(Box::new(t))),
             _ => Err(UnknownFieldType(leading)),
         }
@@ -98,7 +94,7 @@ impl Debug for FieldType<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{CanonicalClassName, ClassName, FieldType, ReprForm, parse, validate_rw};
+    use crate::{FieldType, parse, validate_rw};
 
     #[test]
     fn primitives() {
@@ -127,11 +123,7 @@ mod tests {
     fn class() {
         assert_eq!(
             parse::<'_, FieldType<'_>>("Ljava/lang/Object;").unwrap(),
-            FieldType::Class(Box::new(ClassName::TopLevel(CanonicalClassName {
-                package: Some("java/lang"),
-                simple: "Object",
-                form: ReprForm::Internal,
-            })))
+            FieldType::Class("java/lang/Object")
         );
         validate_rw::<'_, FieldType<'_>>("Ljava/lang/Object;");
     }
@@ -158,13 +150,7 @@ mod tests {
     fn array_class() {
         assert_eq!(
             parse::<'_, FieldType<'_>>("[Ljava/lang/Object;").unwrap(),
-            FieldType::Array(Box::new(FieldType::Class(Box::new(ClassName::TopLevel(
-                CanonicalClassName {
-                    package: Some("java/lang"),
-                    simple: "Object",
-                    form: ReprForm::Internal,
-                }
-            )))))
+            FieldType::Array(Box::new(FieldType::Class("java/lang/Object")))
         );
         validate_rw::<'_, FieldType<'_>>("[Ljava/lang/Object;");
     }
@@ -174,11 +160,7 @@ mod tests {
         assert_eq!(
             parse::<'_, FieldType<'_>>("[[Ljava/lang/Object;").unwrap(),
             FieldType::Array(Box::new(FieldType::Array(Box::new(FieldType::Class(
-                Box::new(ClassName::TopLevel(CanonicalClassName {
-                    package: Some("java/lang"),
-                    simple: "Object",
-                    form: ReprForm::Internal,
-                }))
+                "java/lang/Object"
             )))))
         );
         validate_rw::<'_, FieldType<'_>>("[[Ljava/lang/Object;");

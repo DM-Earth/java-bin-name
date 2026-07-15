@@ -131,10 +131,7 @@ impl Debug for MethodDescriptor<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        CanonicalClassName, ClassName, FieldType, MethodDescriptor, MethodReturnDescriptor,
-        ReprForm, parse, validate_rw,
-    };
+    use crate::{FieldType, MethodDescriptor, MethodReturnDescriptor, parse, validate_rw};
 
     #[test]
     fn return_desc_void() {
@@ -177,24 +174,12 @@ mod tests {
                 params: Box::new([
                     FieldType::Int,
                     FieldType::Array(Box::new(FieldType::Byte)),
-                    FieldType::Class(Box::new(ClassName::TopLevel(CanonicalClassName {
-                        package: Some("java/lang"),
-                        simple: "String",
-                        form: ReprForm::Internal
-                    }))),
-                    FieldType::Class(Box::new(ClassName::TopLevel(CanonicalClassName {
-                        package: Some("java/lang"),
-                        simple: "Object",
-                        form: ReprForm::Internal
-                    }))),
+                    FieldType::Class("java/lang/String"),
+                    FieldType::Class("java/lang/Object"),
                     FieldType::Boolean,
                 ]),
                 ret: MethodReturnDescriptor::Type(FieldType::Array(Box::new(FieldType::Class(
-                    Box::new(ClassName::TopLevel(CanonicalClassName {
-                        package: Some("java/lang"),
-                        simple: "String",
-                        form: ReprForm::Internal
-                    }))
+                    "java/lang/String"
                 ))))
             }
         );
