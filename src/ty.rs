@@ -1,4 +1,6 @@
-use std::fmt::{Debug, Display};
+use core::fmt::{Debug, Display};
+
+use alloc::boxed::Box;
 
 use crate::{Cursor, Parse};
 
@@ -6,10 +8,10 @@ use crate::{Cursor, Parse};
 #[derive(Debug, Clone)]
 pub struct UnknownFieldType(char);
 
-impl std::error::Error for UnknownFieldType {}
+impl core::error::Error for UnknownFieldType {}
 
 impl Display for UnknownFieldType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "unknown field type '{}'", self.0)
     }
 }
@@ -33,7 +35,7 @@ pub enum FieldType<'a> {
 }
 
 impl Display for FieldType<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Byte => write!(f, "B"),
             Self::Char => write!(f, "C"),
@@ -73,7 +75,7 @@ impl<'a> Parse<'a> for FieldType<'a> {
 }
 
 impl Debug for FieldType<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Byte => write!(f, "byte"),
             Self::Char => write!(f, "char"),
@@ -94,6 +96,8 @@ impl Debug for FieldType<'_> {
 
 #[cfg(test)]
 mod tests {
+    use alloc::boxed::Box;
+
     use crate::{FieldType, parse, validate_rw};
 
     #[test]

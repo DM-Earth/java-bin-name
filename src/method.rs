@@ -1,4 +1,6 @@
-use std::fmt::{Debug, Display};
+use core::fmt::{Debug, Display};
+
+use alloc::{boxed::Box, vec};
 
 use crate::{Cursor, Parse, UnknownFieldType, ty::FieldType};
 
@@ -11,7 +13,7 @@ pub enum InvalidMethodDescriptor {
     UnknownFieldTy(UnknownFieldType),
 }
 
-impl std::error::Error for InvalidMethodDescriptor {}
+impl core::error::Error for InvalidMethodDescriptor {}
 
 impl From<UnknownFieldType> for InvalidMethodDescriptor {
     fn from(value: UnknownFieldType) -> Self {
@@ -20,7 +22,7 @@ impl From<UnknownFieldType> for InvalidMethodDescriptor {
 }
 
 impl Display for InvalidMethodDescriptor {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::BrokenBrackets => write!(f, "broken brackets"),
             Self::UnknownFieldTy(unknown_field_ty) => {
@@ -42,7 +44,7 @@ pub struct MethodDescriptor<'a> {
 }
 
 impl Display for MethodDescriptor<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "(")?;
         for param in &self.params {
             write!(f, "{param}")?;
@@ -83,7 +85,7 @@ pub enum MethodReturnDescriptor<'a> {
 }
 
 impl Display for MethodReturnDescriptor<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             MethodReturnDescriptor::Void => write!(f, "V"),
             MethodReturnDescriptor::Type(field_ty) => write!(f, "{field_ty}"),
@@ -105,7 +107,7 @@ impl<'a> Parse<'a> for MethodReturnDescriptor<'a> {
 }
 
 impl Debug for MethodReturnDescriptor<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Void => write!(f, "void"),
             Self::Type(ty) => Debug::fmt(ty, f),
@@ -114,7 +116,7 @@ impl Debug for MethodReturnDescriptor<'_> {
 }
 
 impl Debug for MethodDescriptor<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "method(")?;
         let mut it = self.params.iter();
         if let Some(first) = it.next() {
@@ -131,6 +133,8 @@ impl Debug for MethodDescriptor<'_> {
 
 #[cfg(test)]
 mod tests {
+    use alloc::boxed::Box;
+
     use crate::{FieldType, MethodDescriptor, MethodReturnDescriptor, parse, validate_rw};
 
     #[test]

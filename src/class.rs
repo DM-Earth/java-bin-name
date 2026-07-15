@@ -1,4 +1,6 @@
-use std::{convert::Infallible, fmt::Display};
+use core::{convert::Infallible, fmt::Display};
+
+use alloc::boxed::Box;
 
 use crate::{Cursor, Parse, ReprForm, method::MethodDescriptor, strip_digits_prefix};
 
@@ -48,7 +50,7 @@ pub enum ClassName<'a> {
 }
 
 impl Display for ClassName<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             ClassName::TopLevel(canonical_class_name) => write!(f, "{canonical_class_name}"),
             ClassName::Member { parent, simple } => write!(f, "{parent}${simple}"),
@@ -117,7 +119,7 @@ pub struct CanonicalClassName<'a> {
 }
 
 impl Display for CanonicalClassName<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if let Some(pkg) = self.package {
             write!(f, "{pkg}{}{}", self.form.package_separator(), self.simple)
         } else {
@@ -151,6 +153,8 @@ impl<'a> Parse<'a> for CanonicalClassName<'a> {
 
 #[cfg(test)]
 mod tests {
+    use alloc::boxed::Box;
+
     use crate::{CanonicalClassName, ClassName, ReprForm, parse, validate_rw};
 
     #[test]

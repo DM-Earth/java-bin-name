@@ -21,11 +21,15 @@
 //! - Methods: [`MethodDescriptor`]
 //! - Field types: [`FieldType`]
 
+#![no_std]
+
+extern crate alloc;
+
 mod class;
 mod method;
 mod ty;
 
-use std::convert::Infallible;
+use core::convert::Infallible;
 
 pub use class::*;
 pub use method::*;
@@ -163,20 +167,24 @@ where
 #[cfg(test)]
 fn validate_rw<'a, T>(value: &'a str)
 where
-    T: Parse<'a> + std::fmt::Display,
-    T::Error: std::fmt::Debug,
+    T: Parse<'a> + core::fmt::Display,
+    T::Error: core::fmt::Debug,
 {
-    use std::marker::PhantomData;
+    use core::marker::PhantomData;
+
+    use alloc::string::String;
 
     struct ClearValidator<T>(String, PhantomData<T>);
 
     impl<'a, T> Parse<'a> for ClearValidator<T>
     where
-        T: Parse<'a> + std::fmt::Display,
+        T: Parse<'a> + core::fmt::Display,
     {
         type Error = T::Error;
 
         fn parse_from(cursor: &mut Cursor<'a>) -> Result<Self, Self::Error> {
+            use alloc::string::ToString as _;
+
             let val = T::parse_from(cursor)?;
             assert_eq!(cursor.get(), "", "non-empty string buf left");
             Ok(Self(val.to_string(), PhantomData))
