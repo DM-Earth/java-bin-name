@@ -128,16 +128,23 @@ impl Debug for FieldType<'_> {
 pub enum TypeSignature<'a> {
     Primitive(PrimitiveType),
     Class {
-        sig: ClassTypeSignature<'a>,
-        suffix: Option<ClassTypeSignature<'a>>,
+        sig: ReducedClassTypeSignature<'a>,
+        suffix: Option<ReducedClassTypeSignature<'a>>,
     },
     Type(&'a str),
     Array(Box<Self>),
 }
 
+/// Deprecated notation to simple class type signature.
+#[deprecated = "the name is inappropriate; use `ReducedClassTypeSignature`."]
+pub type ClassTypeSignature<'a> = ReducedClassTypeSignature<'a>;
+
 /// Signature of a class type.
+///
+/// This differs from `ClassTypeSignature` in JVMS as this does not contain the suffix.
 #[derive(Clone, PartialEq, Eq)]
-pub struct ClassTypeSignature<'a> {
+#[doc(alias = "SimpleClassTypeSignature")]
+pub struct ReducedClassTypeSignature<'a> {
     /// Simple or full name of the class, depending on its location.
     pub name: &'a str,
     /// Generic arguments.
@@ -185,7 +192,7 @@ impl Display for TypeSignature<'_> {
     }
 }
 
-impl Display for ClassTypeSignature<'_> {
+impl Display for ReducedClassTypeSignature<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.name)?;
         if !self.args.is_empty() {
@@ -282,9 +289,9 @@ impl<'a> Parse<'a> for TypeSignature<'a> {
                 };
 
                 Ok(Self::Class {
-                    sig: ClassTypeSignature::parse_from(&mut Cursor(major))?,
+                    sig: ReducedClassTypeSignature::parse_from(&mut Cursor(major))?,
                     suffix: suffix
-                        .map(|src| ClassTypeSignature::parse_from(&mut Cursor(src)))
+                        .map(|src| ReducedClassTypeSignature::parse_from(&mut Cursor(src)))
                         .transpose()?,
                 })
             }
@@ -297,7 +304,7 @@ impl<'a> Parse<'a> for TypeSignature<'a> {
     }
 }
 
-impl<'a> Parse<'a> for ClassTypeSignature<'a> {
+impl<'a> Parse<'a> for ReducedClassTypeSignature<'a> {
     type Error = UnknownTypeTag;
 
     fn parse_from(input: &mut Cursor<'a>) -> Result<Self, UnknownTypeTag> {
@@ -361,7 +368,7 @@ impl Debug for TypeSignature<'_> {
     }
 }
 
-impl Debug for ClassTypeSignature<'_> {
+impl Debug for ReducedClassTypeSignature<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.name)?;
         if !self.args.is_empty() {
@@ -395,7 +402,7 @@ mod tests {
     use smallvec::{SmallVec, smallvec};
 
     use crate::{
-        ClassTypeSignature, FieldType, PrimitiveType, TypeArgument, TypeArgumentKind,
+        FieldType, PrimitiveType, ReducedClassTypeSignature, TypeArgument, TypeArgumentKind,
         TypeSignature, parse, validate_rw,
     };
 
@@ -436,7 +443,7 @@ mod tests {
         assert_eq!(
             parse::<'_, TypeSignature<'_>>("Ljava/lang/Object;").unwrap(),
             TypeSignature::Class {
-                sig: ClassTypeSignature {
+                sig: ReducedClassTypeSignature {
                     name: "java/lang/Object",
                     args: SmallVec::new()
                 },
@@ -509,13 +516,13 @@ mod tests {
             )
             .unwrap(),
             TypeSignature::Class {
-                sig: ClassTypeSignature {
+                sig: ReducedClassTypeSignature {
                     name: "java/util/Map",
                     args: smallvec![
                         Some(Box::new(TypeArgument {
                             kind: TypeArgumentKind::Exact,
                             signature: TypeSignature::Class {
-                                sig: ClassTypeSignature {
+                                sig: ReducedClassTypeSignature {
                                     name: "java/lang/String",
                                     args: SmallVec::new(),
                                 },
@@ -525,7 +532,7 @@ mod tests {
                         Some(Box::new(TypeArgument {
                             kind: TypeArgumentKind::Extends,
                             signature: TypeSignature::Class {
-                                sig: ClassTypeSignature {
+                                sig: ReducedClassTypeSignature {
                                     name: "java/lang/Integer",
                                     args: SmallVec::new(),
                                 },
@@ -547,7 +554,7 @@ mod tests {
         assert_eq!(
             parse::<'_, TypeSignature<'_>>("Ljava/util/concurrent/Future<*>;").unwrap(),
             TypeSignature::Class {
-                sig: ClassTypeSignature {
+                sig: ReducedClassTypeSignature {
                     name: "java/util/concurrent/Future",
                     args: smallvec![None]
                 },
@@ -562,14 +569,14 @@ mod tests {
         assert_eq!(
             parse::<'_, TypeSignature<'_>>("LOuter<TT;>.Inner<TU;>;").unwrap(),
             TypeSignature::Class {
-                sig: ClassTypeSignature {
+                sig: ReducedClassTypeSignature {
                     name: "Outer",
                     args: smallvec![Some(Box::new(TypeArgument {
                         kind: TypeArgumentKind::Exact,
                         signature: TypeSignature::Type("T"),
                     }))]
                 },
-                suffix: Some(ClassTypeSignature {
+                suffix: Some(ReducedClassTypeSignature {
                     name: "Inner",
                     args: smallvec![Some(Box::new(TypeArgument {
                         kind: TypeArgumentKind::Exact,
