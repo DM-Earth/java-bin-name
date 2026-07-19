@@ -3,7 +3,7 @@ use core::fmt::{Debug, Display, Write as _};
 use alloc::boxed::Box;
 use smallvec::SmallVec;
 
-use crate::{Cursor, Parse};
+use crate::{Cursor, Parse, angle_safe_split};
 
 /// Error type marking the leading character of a type descriptor is invalid.
 #[derive(Debug, Clone)]
@@ -237,50 +237,13 @@ impl<'a> Parse<'a> for TypeSignature<'a> {
             'S' => Ok(Self::Primitive(PrimitiveType::Short)),
             'Z' => Ok(Self::Primitive(PrimitiveType::Boolean)),
             'L' => {
-                let mut offset0 = if let Some((a, b)) = cursor.0.split_once('<')
-                    && !a.contains(['.', ';'])
-                {
-                    let mut rem = b;
-                    let mut layers = 1usize;
-                    while layers > 0 {
-                        let pos = rem.find(['<', '>']).expect("unclosed angles");
-                        match rem.as_bytes()[pos] {
-                            b'<' => layers += 1,
-                            b'>' => layers -= 1,
-                            _ => unreachable!(),
-                        }
-                        rem = &rem[pos + 1..];
-                    }
-                    unsafe { rem.as_ptr().byte_offset_from_unsigned(cursor.0.as_ptr()) }
-                } else {
-                    0
-                };
-                offset0 += cursor.0[offset0..]
-                    .find([';', '.'])
-                    .ok_or(UnknownTypeTag('L'))?;
-                let major = cursor.advance(|s| s.split_at(offset0));
+                let major = cursor
+                    .try_advance(|s| angle_safe_split(s, &[';', '.']).ok_or(UnknownTypeTag('L')))?;
                 let suffix = match cursor.get_char() {
                     '.' => {
-                        let mut offset1 = if let Some((a, b)) = cursor.0.split_once('<')
-                            && !a.contains(';')
-                        {
-                            let mut rem = b;
-                            let mut layers = 1usize;
-                            while layers > 0 {
-                                let pos = rem.find(['<', '>']).expect("unclosed angles");
-                                match rem.as_bytes()[pos] {
-                                    b'<' => layers += 1,
-                                    b'>' => layers -= 1,
-                                    _ => unreachable!(),
-                                }
-                                rem = &rem[pos + 1..];
-                            }
-                            unsafe { rem.as_ptr().byte_offset_from_unsigned(cursor.0.as_ptr()) }
-                        } else {
-                            0
-                        };
-                        offset1 += cursor.0[offset1..].find(';').ok_or(UnknownTypeTag('L'))?;
-                        let suffix = cursor.advance(|s| s.split_at(offset1));
+                        let suffix = cursor.try_advance(|s| {
+                            angle_safe_split(s, &[';']).ok_or(UnknownTypeTag('L'))
+                        })?;
                         cursor.get_char();
                         Some(suffix)
                     }

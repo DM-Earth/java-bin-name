@@ -156,6 +156,28 @@ fn strip_digits_prefix(s: &str) -> (Option<u32>, &str) {
     (last_index.map(|_| digits), leftover)
 }
 
+fn angle_safe_split<'a>(src: &'a str, sep: &[char]) -> Option<(&'a str, &'a str)> {
+    let offset = if let Some((a, b)) = src.split_once('<')
+        && !a.contains(sep)
+    {
+        let mut rem = b;
+        let mut layers = 1usize;
+        while layers > 0 {
+            let pos = rem.find(['<', '>'])?;
+            match rem.as_bytes()[pos] {
+                b'<' => layers += 1,
+                b'>' => layers -= 1,
+                _ => unreachable!(),
+            }
+            rem = &rem[pos + 1..];
+        }
+        unsafe { rem.as_ptr().byte_offset_from_unsigned(src.as_ptr()) }
+    } else {
+        0
+    };
+    Some(src.split_at(offset + src[offset..].find(sep)?))
+}
+
 /// Parses a name.
 #[allow(clippy::missing_errors_doc)]
 #[inline]
