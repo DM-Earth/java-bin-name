@@ -8,5 +8,8 @@ Supported items:
 - Methods
 - Field types
 - Type signatures
+- Class signatures
+- Method signatures
+- Field signatures
 
 Differences between JLS and class file representation will be handled automatically.
