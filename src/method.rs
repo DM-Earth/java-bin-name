@@ -6,6 +6,7 @@ use crate::{Cursor, Parse, UnknownTypeTag, ty::FieldType};
 
 /// Error thrown when parsing a method descriptor.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum InvalidMethodDescriptor {
     /// Brackets not exist or not enclosed.
     BrokenBrackets,

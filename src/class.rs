@@ -171,6 +171,7 @@ pub struct ClassSignature<'a> {
 
 /// Errors encountered while parsing a class signature.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum InvalidClassSignature {
     /// Unclosed angles.
     UnclosedAngles,

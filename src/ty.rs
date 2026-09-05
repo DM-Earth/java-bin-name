@@ -135,10 +135,6 @@ pub enum TypeSignature<'a> {
     Array(Box<Self>),
 }
 
-/// Deprecated notation to simple class type signature.
-#[deprecated = "the name is inappropriate; use `ReducedClassTypeSignature`."]
-pub type ClassTypeSignature<'a> = ReducedClassTypeSignature<'a>;
-
 /// Signature of a class type.
 ///
 /// This differs from `ClassTypeSignature` in JVMS as this does not contain the suffix.
