@@ -156,14 +156,16 @@ fn strip_digits_prefix(s: &str) -> (Option<u32>, &str) {
     (last_index.map(|_| digits), leftover)
 }
 
-fn angle_safe_split<'a>(src: &'a str, sep: &[char]) -> Option<(&'a str, &'a str)> {
-    let offset = if let Some((a, b)) = src.split_once('<')
+fn angle_safe_offset(src: &str, sep: &[char]) -> usize {
+    if let Some((a, b)) = src.split_once('<')
         && !a.contains(sep)
     {
         let mut rem = b;
         let mut layers = 1usize;
         while layers > 0 {
-            let pos = rem.find(['<', '>'])?;
+            let Some(pos) = rem.find(['<', '>']) else {
+                return 0;
+            };
             match rem.as_bytes()[pos] {
                 b'<' => layers += 1,
                 b'>' => layers -= 1,
@@ -174,8 +176,23 @@ fn angle_safe_split<'a>(src: &'a str, sep: &[char]) -> Option<(&'a str, &'a str)
         unsafe { rem.as_ptr().byte_offset_from_unsigned(src.as_ptr()) }
     } else {
         0
-    };
+    }
+}
+
+/// Split a string slice with given separator candidates, skipping paired angles.
+///
+/// The separator is conserved in the latter slice.
+fn angle_safe_split<'a>(src: &'a str, sep: &[char]) -> Option<(&'a str, &'a str)> {
+    let offset = angle_safe_offset(src, sep);
     Some(src.split_at(offset + src[offset..].find(sep)?))
+}
+
+/// Split a string slice with given separator candidates, skipping paired angles.
+///
+/// The separator is conserved in the previous slice.
+fn angle_safe_rsplit<'a>(src: &'a str, sep: &[char]) -> Option<(&'a str, &'a str)> {
+    let offset = angle_safe_offset(src, sep);
+    Some(src.split_at(offset + src[offset..].find(sep)? + 1))
 }
 
 /// Parses a name.

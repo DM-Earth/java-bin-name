@@ -1,8 +1,14 @@
-use core::{convert::Infallible, fmt::Display};
+use core::{
+    convert::Infallible,
+    fmt::{Debug, Display},
+};
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, vec::Vec};
+use smallvec::SmallVec;
 
-use crate::{Cursor, Parse, ReprForm, method::MethodDescriptor, strip_digits_prefix};
+use crate::{
+    Cursor, Parse, ReprForm, TypeSignature, method::MethodDescriptor, strip_digits_prefix,
+};
 
 /// Binary name of a class or interface.
 ///
@@ -151,11 +157,241 @@ impl<'a> Parse<'a> for CanonicalClassName<'a> {
     }
 }
 
+/// Signature of a class or interface declaration.
+#[derive(PartialEq, Eq, Clone)]
+pub struct ClassSignature<'a> {
+    /// Generic parameters.
+    pub params: SmallVec<[TypeParameter<'a>; 1]>,
+    /// Super class.
+    pub extends: TypeSignature<'a>,
+    /// Super interfaces.
+    pub impls: Box<[TypeSignature<'a>]>,
+}
+
+/// Generic parameter of a class signature.
+#[derive(PartialEq, Eq, Clone)]
+pub struct TypeParameter<'a> {
+    /// Name of this generic parameter.
+    pub name: &'a str,
+    /// Class bounds.
+    pub bound_class: Option<TypeSignature<'a>>,
+    /// Interface bounds.
+    pub bound_interface: Box<[TypeSignature<'a>]>,
+}
+
+/// Errors encountered while parsing a class signature.
+#[derive(Debug, Clone)]
+pub enum InvalidClassSignature {
+    /// Unclosed angles.
+    UnclosedAngles,
+    /// Unknown type signature tag.
+    UnknownTypeTag(crate::UnknownTypeTag),
+    /// Expected `ReferenceTypeSignature`.
+    ExpectedReference,
+    /// Expected `ClassTypeSignature`.
+    ExpectedClass,
+}
+
+impl<'a> Parse<'a> for ClassSignature<'a> {
+    type Error = InvalidClassSignature;
+
+    fn parse_from(cursor: &mut Cursor<'a>) -> Result<Self, Self::Error> {
+        let mut params = SmallVec::new();
+        if cursor.0.starts_with('<') {
+            cursor.get_char();
+            let contents = cursor.try_advance(|s| {
+                crate::angle_safe_split(s, &['>']).ok_or(InvalidClassSignature::UnclosedAngles)
+            })?;
+            cursor.get_char();
+            let mut contents = Cursor(contents);
+
+            struct UnbakedParam<'a> {
+                name: &'a str,
+                bounds: SmallVec<[TypeSignature<'a>; 1]>,
+            }
+
+            impl<'a> From<UnbakedParam<'a>> for TypeParameter<'a> {
+                fn from(value: UnbakedParam<'a>) -> Self {
+                    let mut it = value.bounds.into_iter();
+                    TypeParameter {
+                        name: value.name,
+                        bound_class: it.next(),
+                        bound_interface: it.collect(),
+                    }
+                }
+            }
+
+            let mut unbaked: Option<UnbakedParam<'a>> = None;
+            while let Some(ident) = contents
+                .try_advance(|s| crate::angle_safe_rsplit(s, &[':', ';']).ok_or(()))
+                .ok()
+                .or_else(|| {
+                    Some(contents.0)
+                        .filter(|s| !s.is_empty())
+                        .inspect(|_| contents.clear())
+                })
+            {
+                let ident = ident.strip_suffix(':').unwrap_or(ident);
+                if let Some(current) = unbaked.as_mut()
+                    && ident.ends_with(';')
+                {
+                    let bound = crate::parse(ident)?;
+                    if !matches!(
+                        bound,
+                        TypeSignature::Class { .. }
+                            | TypeSignature::Type(_)
+                            | TypeSignature::Array(_)
+                    ) {
+                        return Err(InvalidClassSignature::ExpectedReference);
+                    }
+                    current.bounds.push(bound);
+                } else {
+                    if let Some(prev) = unbaked.replace(UnbakedParam {
+                        name: ident,
+                        bounds: SmallVec::new(),
+                    }) {
+                        params.push(prev.into());
+                    }
+                }
+            }
+            if let Some(last) = unbaked {
+                params.push(last.into());
+            }
+        }
+
+        Ok(Self {
+            params,
+            extends: {
+                let sig = TypeSignature::parse_from(cursor)?;
+                if !matches!(sig, TypeSignature::Class { .. }) {
+                    return Err(InvalidClassSignature::ExpectedClass);
+                }
+                sig
+            },
+            impls: {
+                let mut buf = Vec::new();
+                while !cursor.0.is_empty() {
+                    let sig = TypeSignature::parse_from(cursor)?;
+                    if !matches!(sig, TypeSignature::Class { .. }) {
+                        return Err(InvalidClassSignature::ExpectedClass);
+                    }
+                    buf.push(sig);
+                }
+                buf.into()
+            },
+        })
+    }
+}
+
+impl Display for ClassSignature<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if !self.params.is_empty() {
+            write!(f, "<")?;
+            for param in &self.params {
+                write!(f, "{}:", param.name)?;
+                if let Some(bound) = &param.bound_class {
+                    write!(f, "{bound}")?;
+                    for bound in &param.bound_interface {
+                        write!(f, ":{bound}")?;
+                    }
+                }
+            }
+            write!(f, ">")?;
+        }
+        write!(f, "{}", self.extends)?;
+        for sig in &self.impls {
+            write!(f, "{}", sig)?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for InvalidClassSignature {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::UnclosedAngles => write!(f, "unclosed angles"),
+            Self::UnknownTypeTag(err) => write!(f, "{err}"),
+            Self::ExpectedReference => {
+                write!(f, "expected type signature to be `ReferenceTypeSignature`")
+            }
+            Self::ExpectedClass => write!(f, "expected type signature to be `ClassTypeSignature`"),
+        }
+    }
+}
+
+impl core::error::Error for InvalidClassSignature {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Self::UnknownTypeTag(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl From<crate::UnknownTypeTag> for InvalidClassSignature {
+    fn from(value: crate::UnknownTypeTag) -> Self {
+        Self::UnknownTypeTag(value)
+    }
+}
+
+impl Debug for ClassSignature<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if !self.params.is_empty() {
+            let mut iter = self.params.iter().peekable();
+            write!(f, "<")?;
+            while let Some(param) = iter.next() {
+                write!(f, "{param:?}")?;
+                if iter.peek().is_some() {
+                    write!(f, ", ")?;
+                }
+            }
+            write!(f, ">")?;
+        }
+        write!(f, " extends {:?}", self.extends)?;
+        if !self.impls.is_empty() {
+            let mut iter = self.impls.iter().peekable();
+            write!(f, " implements ")?;
+            while let Some(mom) = iter.next() {
+                write!(f, "{mom:?}")?;
+                if iter.peek().is_some() {
+                    write!(f, ", ")?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Debug for TypeParameter<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.name)?;
+        let mut iter = self
+            .bound_class
+            .iter()
+            .chain(&self.bound_interface)
+            .peekable();
+        if iter.peek().is_some() {
+            write!(f, ": ")?;
+        }
+        while let Some(bound) = iter.next() {
+            write!(f, "{bound:?}")?;
+            if iter.peek().is_some() {
+                write!(f, " + ")?;
+            }
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use alloc::boxed::Box;
+    use smallvec::SmallVec;
 
-    use crate::{CanonicalClassName, ClassName, ReprForm, parse, validate_rw};
+    use crate::{
+        CanonicalClassName, ClassName, ClassSignature, ReducedClassTypeSignature, ReprForm,
+        TypeParameter, TypeSignature, parse, validate_rw,
+    };
 
     #[test]
     fn top_level() {
@@ -244,5 +480,83 @@ mod tests {
         );
 
         validate_rw::<'_, ClassName<'_>>("com.example.OuterClass$1");
+    }
+
+    #[test]
+    fn class_sig() {
+        assert_eq!(
+            parse::<'_, ClassSignature<'_>>(
+                "Ljava/lang/Object;Ljava/io/Serializable;Ljava/lang/Cloneable;"
+            )
+            .unwrap(),
+            ClassSignature {
+                params: SmallVec::new(),
+                extends: TypeSignature::Class {
+                    sig: ReducedClassTypeSignature {
+                        name: "java/lang/Object",
+                        args: SmallVec::new()
+                    },
+                    suffix: None
+                },
+                impls: Box::new([
+                    TypeSignature::Class {
+                        sig: ReducedClassTypeSignature {
+                            name: "java/io/Serializable",
+                            args: SmallVec::new()
+                        },
+                        suffix: None
+                    },
+                    TypeSignature::Class {
+                        sig: ReducedClassTypeSignature {
+                            name: "java/lang/Cloneable",
+                            args: SmallVec::new()
+                        },
+                        suffix: None
+                    },
+                ])
+            }
+        );
+        validate_rw::<'_, ClassSignature<'_>>(
+            "Ljava/lang/Object;Ljava/io/Serializable;Ljava/lang/Cloneable;",
+        );
+
+        assert_eq!(
+            parse::<'_, ClassSignature<'_>>("<T:Ljava/lang/Object;K:V:>Ljava/lang/Object;")
+                .unwrap(),
+            ClassSignature {
+                params: smallvec::smallvec![
+                    TypeParameter {
+                        name: "T",
+                        bound_class: Some(TypeSignature::Class {
+                            sig: ReducedClassTypeSignature {
+                                name: "java/lang/Object",
+                                args: SmallVec::new()
+                            },
+                            suffix: None
+                        }),
+                        bound_interface: Box::new([])
+                    },
+                    TypeParameter {
+                        name: "K",
+                        bound_class: None,
+                        bound_interface: Box::new([])
+                    },
+                    TypeParameter {
+                        name: "V",
+                        bound_class: None,
+                        bound_interface: Box::new([])
+                    }
+                ],
+                extends: TypeSignature::Class {
+                    sig: ReducedClassTypeSignature {
+                        name: "java/lang/Object",
+                        args: SmallVec::new()
+                    },
+                    suffix: None
+                },
+                impls: Box::new([])
+            }
+        );
+        validate_rw::<'_, ClassSignature<'_>>("<T:Ljava/lang/Object;K:V:>Ljava/lang/Object;");
     }
 }
