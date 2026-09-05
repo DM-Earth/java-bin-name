@@ -7,7 +7,8 @@ use alloc::{boxed::Box, vec::Vec};
 use smallvec::SmallVec;
 
 use crate::{
-    Cursor, Parse, ReprForm, TypeSignature, method::MethodDescriptor, strip_digits_prefix,
+    Cursor, Parse, ReprForm, TypeParameter, TypeSignature, method::MethodDescriptor,
+    strip_digits_prefix,
 };
 
 /// Binary name of a class or interface.
@@ -168,17 +169,6 @@ pub struct ClassSignature<'a> {
     pub impls: Box<[TypeSignature<'a>]>,
 }
 
-/// Generic parameter of a class signature.
-#[derive(PartialEq, Eq, Clone)]
-pub struct TypeParameter<'a> {
-    /// Name of this generic parameter.
-    pub name: &'a str,
-    /// Class bounds.
-    pub bound_class: Option<TypeSignature<'a>>,
-    /// Interface bounds.
-    pub bound_interface: Box<[TypeSignature<'a>]>,
-}
-
 /// Errors encountered while parsing a class signature.
 #[derive(Debug, Clone)]
 pub enum InvalidClassSignature {
@@ -204,59 +194,7 @@ impl<'a> Parse<'a> for ClassSignature<'a> {
             })?;
             cursor.get_char();
             let mut contents = Cursor(contents);
-
-            struct UnbakedParam<'a> {
-                name: &'a str,
-                bounds: SmallVec<[TypeSignature<'a>; 1]>,
-            }
-
-            impl<'a> From<UnbakedParam<'a>> for TypeParameter<'a> {
-                fn from(value: UnbakedParam<'a>) -> Self {
-                    let mut it = value.bounds.into_iter();
-                    TypeParameter {
-                        name: value.name,
-                        bound_class: it.next(),
-                        bound_interface: it.collect(),
-                    }
-                }
-            }
-
-            let mut unbaked: Option<UnbakedParam<'a>> = None;
-            while let Some(ident) = contents
-                .try_advance(|s| crate::angle_safe_rsplit(s, &[':', ';']).ok_or(()))
-                .ok()
-                .or_else(|| {
-                    Some(contents.0)
-                        .filter(|s| !s.is_empty())
-                        .inspect(|_| contents.clear())
-                })
-            {
-                let ident = ident.strip_suffix(':').unwrap_or(ident);
-                if let Some(current) = unbaked.as_mut()
-                    && ident.ends_with(';')
-                {
-                    let bound = crate::parse(ident)?;
-                    if !matches!(
-                        bound,
-                        TypeSignature::Class { .. }
-                            | TypeSignature::Type(_)
-                            | TypeSignature::Array(_)
-                    ) {
-                        return Err(InvalidClassSignature::ExpectedReference);
-                    }
-                    current.bounds.push(bound);
-                } else {
-                    if let Some(prev) = unbaked.replace(UnbakedParam {
-                        name: ident,
-                        bounds: SmallVec::new(),
-                    }) {
-                        params.push(prev.into());
-                    }
-                }
-            }
-            if let Some(last) = unbaked {
-                params.push(last.into());
-            }
+            crate::parse_type_params(&mut contents, |param| params.push(param))?;
         }
 
         Ok(Self {
@@ -286,17 +224,7 @@ impl<'a> Parse<'a> for ClassSignature<'a> {
 impl Display for ClassSignature<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if !self.params.is_empty() {
-            write!(f, "<")?;
-            for param in &self.params {
-                write!(f, "{}:", param.name)?;
-                if let Some(bound) = &param.bound_class {
-                    write!(f, "{bound}")?;
-                    for bound in &param.bound_interface {
-                        write!(f, ":{bound}")?;
-                    }
-                }
-            }
-            write!(f, ">")?;
+            crate::display_type_params(&self.params, f)?;
         }
         write!(f, "{}", self.extends)?;
         for sig in &self.impls {
@@ -334,6 +262,15 @@ impl From<crate::UnknownTypeTag> for InvalidClassSignature {
     }
 }
 
+impl From<crate::ParseTypeParamsError> for InvalidClassSignature {
+    fn from(value: crate::ParseTypeParamsError) -> Self {
+        match value {
+            crate::ParseTypeParamsError::UnknownTypeTag(err) => Self::UnknownTypeTag(err),
+            crate::ParseTypeParamsError::ExpectedReference => Self::ExpectedReference,
+        }
+    }
+}
+
 impl Debug for ClassSignature<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if !self.params.is_empty() {
@@ -356,27 +293,6 @@ impl Debug for ClassSignature<'_> {
                 if iter.peek().is_some() {
                     write!(f, ", ")?;
                 }
-            }
-        }
-        Ok(())
-    }
-}
-
-impl Debug for TypeParameter<'_> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.name)?;
-        let mut iter = self
-            .bound_class
-            .iter()
-            .chain(&self.bound_interface)
-            .peekable();
-        if iter.peek().is_some() {
-            write!(f, ": ")?;
-        }
-        while let Some(bound) = iter.next() {
-            write!(f, "{bound:?}")?;
-            if iter.peek().is_some() {
-                write!(f, " + ")?;
             }
         }
         Ok(())
