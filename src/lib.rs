@@ -36,6 +36,9 @@ pub use class::*;
 pub use method::*;
 pub use ty::*;
 
+/// Signature of a field, formal parameter, local variable, or record component declaration.
+pub type FieldSignature<'a> = TypeSignature<'a>;
+
 /// Types that could be parsed from a borrowed string cursor.
 pub trait Parse<'s>: Sized {
     /// The error type.
