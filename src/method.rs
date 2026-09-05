@@ -1,8 +1,9 @@
 use core::fmt::{Debug, Display};
 
+use alloc::{boxed::Box, vec::Vec};
 use smallvec::SmallVec;
 
-use crate::{Cursor, Parse, UnknownTypeTag, ty::FieldType};
+use crate::{Cursor, Parse, TypeParameter, TypeSignature, UnknownTypeTag, ty::FieldType};
 
 /// Error thrown when parsing a method descriptor.
 #[derive(Debug, Clone)]
@@ -132,13 +133,232 @@ impl Debug for MethodDescriptor<'_> {
     }
 }
 
+/// Signature of a method declaration.
+#[derive(PartialEq, Eq, Clone)]
+pub struct MethodSignature<'a> {
+    /// Generic parameters.
+    pub params: SmallVec<[TypeParameter<'a>; 1]>,
+    /// Method arguments.
+    pub args: SmallVec<[TypeSignature<'a>; 2]>,
+    /// Return type of the method.
+    pub result: MethodReturnSignature<'a>,
+    /// Exceptions to be thrown.
+    pub throws: Box<[TypeSignature<'a>]>,
+}
+
+/// Result section in a method signature.
+#[derive(PartialEq, Eq, Clone)]
+pub enum MethodReturnSignature<'a> {
+    /// No return value.
+    Void,
+    /// Returns something.
+    Type(TypeSignature<'a>),
+}
+
+/// Errors encountered while parsing a method signature.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub enum InvalidMethodSignature {
+    /// Unclosed angles.
+    UnclosedAngles,
+    /// Unclosed brackets.
+    UnclosedBrackets,
+    /// Unknown type signature tag.
+    UnknownTypeTag(UnknownTypeTag),
+    /// Expected `ReferenceTypeSignature`.
+    ExpectedReference,
+    /// Expected left bracket.
+    ExpectedBracket,
+    /// Expected `ClassTypeSignature` or `TypeVariableSignature`.
+    ExpectedClassOrTypeVar,
+}
+
+impl<'a> Parse<'a> for MethodSignature<'a> {
+    type Error = InvalidMethodSignature;
+
+    fn parse_from(cursor: &mut Cursor<'a>) -> Result<Self, Self::Error> {
+        let mut params = SmallVec::new();
+        if cursor.0.starts_with('<') {
+            cursor.get_char();
+            let contents = cursor.try_advance(|s| {
+                crate::angle_safe_split(s, &['>']).ok_or(InvalidMethodSignature::UnclosedAngles)
+            })?;
+            cursor.get_char();
+            let mut contents = Cursor(contents);
+            crate::parse_type_params(&mut contents, |param| params.push(param))?;
+        }
+
+        let mut args = SmallVec::new();
+        if cursor.get_char() != '(' {
+            return Err(InvalidMethodSignature::ExpectedBracket);
+        }
+        let contents = cursor.try_advance(|s| {
+            // this is safe since there won't be any other right bracket.
+            s.split_once(')')
+                .ok_or(InvalidMethodSignature::UnclosedBrackets)
+        })?;
+        let mut contents = Cursor(contents);
+        while !contents.0.is_empty() {
+            args.push(TypeSignature::parse_from(&mut contents)?);
+        }
+
+        let result = MethodReturnSignature::parse_from(cursor)?;
+
+        let mut throws = Vec::new();
+        while !cursor.0.is_empty() && cursor.get_char() == '^' {
+            let exception = TypeSignature::parse_from(cursor)?;
+            if !matches!(
+                exception,
+                TypeSignature::Class { .. } | TypeSignature::Type(_)
+            ) {
+                return Err(InvalidMethodSignature::ExpectedClassOrTypeVar);
+            }
+            throws.push(exception);
+        }
+
+        Ok(Self {
+            params,
+            args,
+            result,
+            throws: throws.into(),
+        })
+    }
+}
+
+impl Display for MethodSignature<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if !self.params.is_empty() {
+            crate::display_type_params(&self.params, f)?;
+        }
+        write!(f, "(")?;
+        for arg in &self.args {
+            write!(f, "{arg}")?;
+        }
+        write!(f, "){}", self.result)?;
+        for thrown in &self.throws {
+            write!(f, "^{}", thrown)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> Parse<'a> for MethodReturnSignature<'a> {
+    type Error = UnknownTypeTag;
+
+    fn parse_from(cursor: &mut Cursor<'a>) -> Result<Self, Self::Error> {
+        if cursor.0.starts_with('V') {
+            cursor.advance_by(1);
+            Ok(Self::Void)
+        } else {
+            TypeSignature::parse_from(cursor).map(Self::Type)
+        }
+    }
+}
+
+impl Display for MethodReturnSignature<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            MethodReturnSignature::Void => write!(f, "V"),
+            MethodReturnSignature::Type(sig) => write!(f, "{sig}"),
+        }
+    }
+}
+
+impl Display for InvalidMethodSignature {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::UnclosedAngles => write!(f, "unclosed angles"),
+            Self::UnclosedBrackets => write!(f, "unclosed brackets"),
+            Self::UnknownTypeTag(err) => write!(f, "{err}"),
+            Self::ExpectedReference => {
+                write!(f, "expected type signature to be `ReferenceTypeSignature`")
+            }
+            Self::ExpectedBracket => write!(f, "expected left bracket"),
+            Self::ExpectedClassOrTypeVar => write!(
+                f,
+                "expected exception signature to be either `ClassTypeSignature` or `TypeVariableSignature`"
+            ),
+        }
+    }
+}
+
+impl core::error::Error for InvalidMethodSignature {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Self::UnknownTypeTag(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl From<UnknownTypeTag> for InvalidMethodSignature {
+    fn from(value: UnknownTypeTag) -> Self {
+        Self::UnknownTypeTag(value)
+    }
+}
+
+impl From<crate::ParseTypeParamsError> for InvalidMethodSignature {
+    fn from(value: crate::ParseTypeParamsError) -> Self {
+        match value {
+            crate::ParseTypeParamsError::UnknownTypeTag(err) => Self::UnknownTypeTag(err),
+            crate::ParseTypeParamsError::ExpectedReference => Self::ExpectedReference,
+        }
+    }
+}
+
+impl Debug for MethodSignature<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if !self.params.is_empty() {
+            write!(f, "<")?;
+            let mut it = self.params.iter().peekable();
+            while let Some(param) = it.next() {
+                write!(f, "{param:?}")?;
+                if it.peek().is_some() {
+                    write!(f, ", ")?;
+                }
+            }
+            write!(f, ">::")?;
+        }
+        write!(f, "(")?;
+        let mut it = self.args.iter().peekable();
+        while let Some(arg) = it.next() {
+            write!(f, "{arg:?}")?;
+            if it.peek().is_some() {
+                write!(f, ", ")?;
+            }
+        }
+        write!(f, ") -> {:?}", self.result)?;
+        if !self.throws.is_empty() {
+            write!(f, " throws ")?;
+            let mut it = self.throws.iter().peekable();
+            while let Some(exception) = it.next() {
+                write!(f, "{exception:?}")?;
+                if it.peek().is_some() {
+                    write!(f, ", ")?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Debug for MethodReturnSignature<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            MethodReturnSignature::Void => write!(f, "void"),
+            MethodReturnSignature::Type(ty) => write!(f, "{ty:?}"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use alloc::boxed::Box;
     use smallvec::SmallVec;
 
     use crate::{
-        FieldType, MethodDescriptor, MethodReturnDescriptor, PrimitiveType, parse, validate_rw,
+        FieldType, MethodDescriptor, MethodReturnDescriptor, MethodReturnSignature,
+        MethodSignature, PrimitiveType, TypeParameter, TypeSignature, parse, validate_rw,
     };
 
     #[test]
@@ -194,5 +414,69 @@ mod tests {
         validate_rw::<'_, MethodDescriptor<'_>>(
             "(I[BLjava/lang/String;Ljava/lang/Object;Z)[Ljava/lang/String;",
         );
+    }
+
+    #[test]
+    fn method_sig() {
+        assert_eq!(
+            parse::<'_, MethodSignature<'_>>(
+                "(Ljava/lang/String;I)V^Ljava/io/IOException;^Ljava/lang/SecurityException;"
+            )
+            .unwrap(),
+            MethodSignature {
+                params: SmallVec::new(),
+                args: smallvec::smallvec![
+                    TypeSignature::Class {
+                        sig: crate::ReducedClassTypeSignature {
+                            name: "java/lang/String",
+                            args: SmallVec::new()
+                        },
+                        suffix: None
+                    },
+                    TypeSignature::Primitive(PrimitiveType::Int)
+                ],
+                result: MethodReturnSignature::Void,
+                throws: Box::new([
+                    TypeSignature::Class {
+                        sig: crate::ReducedClassTypeSignature {
+                            name: "java/io/IOException",
+                            args: SmallVec::new()
+                        },
+                        suffix: None
+                    },
+                    TypeSignature::Class {
+                        sig: crate::ReducedClassTypeSignature {
+                            name: "java/lang/SecurityException",
+                            args: SmallVec::new()
+                        },
+                        suffix: None
+                    },
+                ])
+            }
+        );
+        validate_rw::<'_, MethodSignature<'_>>(
+            "(Ljava/lang/String;I)V^Ljava/io/IOException;^Ljava/lang/SecurityException;",
+        );
+
+        assert_eq!(
+            parse::<'_, MethodSignature<'_>>("<T:Ljava/lang/Exception;>(TT;)TT;^TT;").unwrap(),
+            MethodSignature {
+                params: smallvec::smallvec![TypeParameter {
+                    name: "T",
+                    bound_class: Some(TypeSignature::Class {
+                        sig: crate::ReducedClassTypeSignature {
+                            name: "java/lang/Exception",
+                            args: SmallVec::new()
+                        },
+                        suffix: None
+                    }),
+                    bound_interface: Box::new([])
+                }],
+                args: smallvec::smallvec![TypeSignature::Type("T")],
+                result: MethodReturnSignature::Type(TypeSignature::Type("T")),
+                throws: Box::new([TypeSignature::Type("T")])
+            }
+        );
+        validate_rw::<'_, MethodSignature<'_>>("<T:Ljava/lang/Exception;>(TT;)TT;^TT;");
     }
 }
