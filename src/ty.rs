@@ -297,7 +297,7 @@ impl<'a> Parse<'a> for TypeArgument<'a> {
                 src.get_char();
                 TypeArgumentKind::Extends
             }
-            Some(b'_') => {
+            Some(b'-') => {
                 src.get_char();
                 TypeArgumentKind::Super
             }
